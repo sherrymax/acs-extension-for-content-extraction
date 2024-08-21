@@ -16,6 +16,7 @@ import java.io.Serializable;
 import java.io.InputStream;
 import java.util.*;
 import java.nio.charset.StandardCharsets;
+import java.text.MessageFormat;
 
 import com.aspose.words.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,12 +40,15 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
 
     public void init() {
+        //On Content Upload/Update Or Property Update
         policyComponent.bindClassBehaviour(ContentServicePolicies.OnContentPropertyUpdatePolicy.QNAME, ContentModel.TYPE_CONTENT,
                 new JavaBehaviour(this, "onContentPropertyUpdate", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
 
+        //On Content Update
         policyComponent.bindClassBehaviour(NodeServicePolicies.OnUpdateNodePolicy.QNAME, ContentModel.TYPE_CONTENT,
                 new JavaBehaviour(this, "onUpdateNode", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
 
+        //On Property Update
         policyComponent.bindClassBehaviour(NodeServicePolicies.OnUpdatePropertiesPolicy.QNAME, ContentModel.TYPE_CONTENT,
                 new JavaBehaviour(this, "onUpdateProperties", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
     }
@@ -52,7 +56,19 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
     @Override
     public void onContentPropertyUpdate(final NodeRef nodeRef, QName propertyQName, ContentData beforeValue, ContentData afterValue) {
         if (nodeService.exists(nodeRef)) {
+
             ContentReader contentReader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
+
+            String myFileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString();
+            if((myFileName.trim().indexOf(".docx") != -1)) {
+//                this.testAsposeMethods(nodeRef);
+                this.buildAsposeDocument(nodeRef);
+            }
+
+
+            /*
+            COMMENTED TEMPORARILY TO TEST THE CONTENT EXTRACTION LOGIC OF TABLE - START
+
             try {
                 System.out.println(">>>> ***** >>>>> START OF CONTENT UPLOAD OR UPDATE >>>> ***** >>>>> ");
                 System.out.println(">>>> ***** >>>>> Uploaded " + contentReader.getContentInputStream().readAllBytes().length + " bytes... >>>> ***** >>>>> ");
@@ -60,7 +76,6 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                 String fileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString();
                 String nodeId = nodeRef.getId();
 
-//              if((fileName.trim().indexOf("doclib") == -1) && (fileName.trim().indexOf("pdf") == -1)) {
                 if((fileName.trim().indexOf(".docx") != -1)) {
                     System.out.println("FILE NAME : "+fileName+" >>> NODE ID : "+nodeId+" >>> INDEX-OF('doclib') : "+fileName.trim().indexOf("doclib"));
                     System.out.println(">>> INVOKING buildAsposeDocument() FOR >>> "+fileName);
@@ -74,6 +89,10 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+
+            COMMENTED TEMPORARILY TO TEST THE CONTENT EXTRACTION LOGIC OF TABLE - END
+            */
+
         }
     }
 
@@ -123,6 +142,88 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         }
     }
 
+    public ArrayList<String> extractSectionNames(final NodeRef nodeRef) {
+
+        ArrayList definedSectionNames = new ArrayList();
+
+        LoadOptions loadOptions = new LoadOptions();
+        loadOptions.setEncoding(StandardCharsets.UTF_8);
+
+        System.out.println(">>>> ***** >>>>> START OF extractSections() >>>> ***** >>>>> ");
+        if (nodeService.exists(nodeRef)) {
+            try {
+                ContentReader contentReader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
+                InputStream is = contentReader.getContentInputStream();
+                Document doc = new Document(is, loadOptions);
+
+                for (Paragraph para : (Iterable<Paragraph>) doc.getChildNodes(NodeType.PARAGRAPH, true)) {
+                    Double contentFontSize = para.getParagraphFormat().getStyle().getFont().getSize();
+                    Boolean isContentBold = para.getParagraphFormat().getStyle().getFont().getBold();
+
+                    if (isContentBold && (contentFontSize == 12.0)) {
+                        String paraText = para.toString(SaveFormat.TEXT).toUpperCase();
+                        paraText = paraText.replace("\n", "").replace("\r", "");
+                        if(paraText.length() > 0) {
+                            System.out.println(">>>" + paraText + "<<<");
+                            definedSectionNames.add(paraText);
+                        }
+                    }
+                }
+
+
+            } catch (java.lang.Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        System.out.println(">>>> ***** >>>>> END OF extractSections() >>>> ***** >>>>> ");
+        return definedSectionNames;
+    }
+
+    public void testAsposeMethods(final NodeRef nodeRef) {
+
+        LoadOptions loadOptions = new LoadOptions();
+        loadOptions.setEncoding(StandardCharsets.UTF_8);
+
+        System.out.println(">>>> ***** >>>>> START OF testAsposeMethods() >>>> ***** >>>>> ");
+
+        this.extractSectionNames(nodeRef);
+
+        if (nodeService.exists(nodeRef)) {
+            try {
+                ContentReader contentReader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
+                InputStream is = contentReader.getContentInputStream();
+                Document doc = new Document(is, loadOptions);
+
+                /*
+                // Get the sections
+                SectionCollection sections = doc.getSections();
+
+                // Iterate through the sections and print their content
+                for (int i = 0; i < sections.getCount(); i++) {
+                    Section section = sections.get(i);
+                    System.out.println("Section " + (i + 1) + ":");
+
+                    HeaderFooterCollection headersFooters = section.getHeadersFooters();
+                    HeaderFooter header = headersFooters.getByHeaderFooterType(HeaderFooterType.HEADER_PRIMARY);
+
+                    System.out.println("Header --> " +section.getHeadersFooters().linkToPrevious(true));
+
+                    System.out.println(section.getBody().toString(SaveFormat.TEXT));
+                }
+                */
+
+
+            } catch (java.lang.Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        System.out.println(">>>> ***** >>>>> END OF testAsposeMethods() >>>> ***** >>>>> ");
+
+    }
+
+
     public void buildAsposeDocument(final NodeRef nodeRef){
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
@@ -142,25 +243,12 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                 Map<String, String> myMap = new HashMap<String, String>();
                 int referencesCount = 0;
 
-                ArrayList sectionNames = this.getDefinedSectionNames();
+                ArrayList sectionNames = this.extractSectionNames(nodeRef);
                 ArrayList sectionNameList = new ArrayList();
                 ArrayList hyperLinkList = new ArrayList();
                 ArrayList refList = new ArrayList();
                 ArrayList authRefList = new ArrayList();
 
-//                ArrayList sectionNames = new ArrayList();
-//                sectionNames.add("PURPOSE");
-//                sectionNames.add("SUPERSEDED DATE");
-//                sectionNames.add("APPLIES TO");
-//                sectionNames.add("ROLES AFFECTED");
-//                sectionNames.add("AUTHORITY REFERENCE");
-//                sectionNames.add("APPROVED BY");
-//                sectionNames.add("SUMMARY OF CHANGES");
-//                sectionNames.add("1.	REQUIREMENTS");
-//                sectionNames.add("2.	RESPONSIBILITIES");
-//                sectionNames.add("3.	TERMS");
-//                sectionNames.add("4.	ACRONYMS");
-//                sectionNames.add("5.	REFERENCES");
 
                 System.out.println("Number of Sections ---> "+contentDoc.getSections().getCount());
                 System.out.println("Document opened. Total pages are " + contentDoc.getPageCount());
@@ -170,7 +258,45 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 //                    System.out.println("Section # "+(i+1)+" Text = "+section.getText());
                     System.out.println("Section # "+(i+1)+ " Para Count = "+section.getBody().getParagraphs().getCount());
 
-                    for(var j=0; j<section.getBody().getParagraphs().getCount(); j++)
+                    ///// ******* FETCH FROM TABLE - START ******** //////
+                    System.out.println("Section # "+(i+1)+ " Table Count = "+section.getBody().getTables().getCount());
+                    TableCollection tables = section.getBody().getTables();
+
+                    for (int a = 0; a < tables.getCount(); a++) {
+                        System.out.println(MessageFormat.format("Start of Table {0}", a));
+
+                        RowCollection rows = tables.get(a).getRows();
+
+                        for (int b = 0; b < rows.getCount(); b++) {
+                            System.out.println(MessageFormat.format("\tStart of Row {0}", b));
+
+                            CellCollection cells = rows.get(b).getCells();
+
+                            for (int c = 0; c < cells.getCount(); c++) {
+                                String cellText = cells.get(c).toString(SaveFormat.TEXT).trim();
+                                System.out.println(MessageFormat.format("\t\tContents of Cell:{0} = \"{1}\"", c, cellText));
+                                for(int fieldItr = 0; fieldItr < cells.get(c).getRange().getFields().getCount(); fieldItr++) {
+                                    Field field = cells.get(c).getRange().getFields().get(fieldItr);
+                                    if (field.getType() == 88) //88 is code for Hyperlink
+                                    {
+                                        FieldHyperlink hyperlink = (FieldHyperlink) field;
+                                        String hyperlinkText = hyperlink.getResult();
+
+                                        System.out.println(">>> >>> INSIDE CELL >>> >>> " + hyperlinkText);
+                                    }
+                                }
+                            }
+
+                            System.out.println(MessageFormat.format("\tEnd of Row {0}", b));
+                        }
+
+                        System.out.println(MessageFormat.format("End of Table {0}\n", a));
+                    }
+
+                    ///// ******* FETCH FROM TABLE - END ******** //////
+
+
+                        for(var j=0; j<section.getBody().getParagraphs().getCount(); j++)
                     {
                         Paragraph paragraph = section.getBody().getParagraphs().get(j);
                         String paraText = ""+paragraph.getText().toString();
