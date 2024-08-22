@@ -10,6 +10,7 @@ import org.alfresco.service.cmr.repository.*;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.behaviour.References;
 import org.alfresco.model.BoeingContentModel;
+import org.alfresco.model.BoeingContentStyleModel;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -22,7 +23,6 @@ import com.aspose.words.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 
-
 //NodeServicePolicies.onUpdateProperties
 public class ContentExtractorBehaviour implements ContentServicePolicies.OnContentPropertyUpdatePolicy, NodeServicePolicies.OnUpdateNodePolicy, NodeServicePolicies.OnUpdatePropertiesPolicy {
 
@@ -31,12 +31,21 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
     private ContentService contentService;
 
     private String referencesListAsJSON = ""; //JSON representation of Reference Object List
-    private String authReferencesListAsJSON = "";  //JSON representation of Reference Object List
+    private String authReferencesListAsJSON = ""; //JSON representation of Reference Object List
+    private ArrayList<String> references = new ArrayList<String>();
     private ArrayList<String> authReferences = new ArrayList<String>();
 
     private String docTitle = "";
+    private String currentSectionName = "";
 
+    private Boolean isTitleExtracted = false;
 
+    private String writings = "";
+    private ArrayList sectionNames = new ArrayList();
+    private ArrayList sectionNameList = new ArrayList();
+    private ArrayList hyperLinkList = new ArrayList();
+    private ArrayList refList = new ArrayList();
+    private ArrayList authRefList = new ArrayList();
 
 
     public void init() {
@@ -60,9 +69,10 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
             ContentReader contentReader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
 
             String myFileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString();
-            if((myFileName.trim().indexOf(".docx") != -1)) {
-//                this.testAsposeMethods(nodeRef);
-                this.buildAsposeDocument(nodeRef);
+            if ((myFileName.trim().indexOf(".docx") != -1)) {
+                //                this.testAsposeMethods(nodeRef);
+                //                this.buildAsposeDocument(nodeRef);
+                this.buildAsposeDocument_newLogic(nodeRef);
             }
 
 
@@ -142,12 +152,11 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         }
     }
 
-    public ArrayList<String> extractSectionNames(final NodeRef nodeRef) {
-
-        ArrayList definedSectionNames = new ArrayList();
+    public void extractSectionNames(final NodeRef nodeRef) {
 
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
+        this.sectionNames = new ArrayList();
 
         System.out.println(">>>> ***** >>>>> START OF extractSections() >>>> ***** >>>>> ");
         if (nodeService.exists(nodeRef)) {
@@ -163,68 +172,164 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                     if (isContentBold && (contentFontSize == 12.0)) {
                         String paraText = para.toString(SaveFormat.TEXT).toUpperCase();
                         paraText = paraText.replace("\n", "").replace("\r", "");
-                        if(paraText.length() > 0) {
+                        if (paraText.length() > 0) {
                             System.out.println(">>>" + paraText + "<<<");
-                            definedSectionNames.add(paraText);
+                            this.sectionNames.add(paraText);
                         }
                     }
                 }
-
-
             } catch (java.lang.Exception e) {
                 throw new RuntimeException(e);
             }
         }
 
         System.out.println(">>>> ***** >>>>> END OF extractSections() >>>> ***** >>>>> ");
-        return definedSectionNames;
     }
 
-    public void testAsposeMethods(final NodeRef nodeRef) {
 
+    public void buildAsposeDocument_newLogic(final NodeRef nodeRef) {
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
-
-        System.out.println(">>>> ***** >>>>> START OF testAsposeMethods() >>>> ***** >>>>> ");
-
-        this.extractSectionNames(nodeRef);
 
         if (nodeService.exists(nodeRef)) {
             try {
                 ContentReader contentReader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
                 InputStream is = contentReader.getContentInputStream();
-                Document doc = new Document(is, loadOptions);
+                Document contentDoc = new Document(is, loadOptions);
+                BookmarkCollection bookmarks = contentDoc.getRange().getBookmarks();
+                String previousParaText = "-";
+                Boolean fetchedDocTitle = false;
 
-                /*
-                // Get the sections
-                SectionCollection sections = doc.getSections();
+                String referencesListAsJSON = "";
+                String authReferencesListAsJSON = "";
+                Map<String, String> myMap = new HashMap<String, String>();
+                int referencesCount = 0;
 
-                // Iterate through the sections and print their content
-                for (int i = 0; i < sections.getCount(); i++) {
-                    Section section = sections.get(i);
-                    System.out.println("Section " + (i + 1) + ":");
+                this.extractSectionNames(nodeRef);
 
-                    HeaderFooterCollection headersFooters = section.getHeadersFooters();
-                    HeaderFooter header = headersFooters.getByHeaderFooterType(HeaderFooterType.HEADER_PRIMARY);
+                System.out.println("Number of Sections are : " + contentDoc.getSections().getCount());
+                System.out.println("Document opened. Total pages are : " + contentDoc.getPageCount());
 
-                    System.out.println("Header --> " +section.getHeadersFooters().linkToPrevious(true));
+                int paraCount = 0;
+                int tableCount = 0;
 
-                    System.out.println(section.getBody().toString(SaveFormat.TEXT));
+                for (Node node : (Iterable<Node>) contentDoc.getChildNodes(NodeType.ANY, true)) {
+                    if (node instanceof Paragraph) {
+                        paraCount++;
+                        Paragraph paragraph = (Paragraph) node;
+
+                        this.determineCurrentSectionName(paragraph);
+//                        System.out.println("Current Section Name >> " + this.currentSectionName);
+
+
+                        for (int fieldItr = 0; fieldItr < paragraph.getRange().getFields().getCount(); fieldItr++) {
+                            Field field = paragraph.getRange().getFields().get(fieldItr);
+                            if (field.getType() == 88) //88 is code for Hyperlink in ASPOSE
+                            {
+                                FieldHyperlink hyperlink = (FieldHyperlink) field;
+                                String hyperlinkText = hyperlink.getResult();
+                                if (this.isWriting(hyperlinkText)) {
+                                    System.out.println("Paragraph found >> Reference Found >> Added to List >> " + hyperlinkText);
+                                    myMap.put(hyperlinkText, hyperlinkText);
+                                }
+
+                                // Some hyperlinks can be local (links to bookmarks inside the document), ignore such.
+                                if (hyperlink.getSubAddress() != null)
+                                    continue;
+
+                                References ref = new References(this.currentSectionName, hyperlink.getResult(), hyperlink.getAddress());
+                                this.refList.add(new ObjectMapper().writeValueAsString(ref));
+                                this.getAuthorityReferences(hyperlink);
+
+//                                sectionNameList.add(currentSectionName);
+//                                hyperLinkList.add(hyperlinkText);
+                            }
+                        }
+
+
+                    } else if (node instanceof Table) {
+//                        System.out.println("Table found");
+                        tableCount++;
+
+                        Table table = (Table) node;
+
+                        // Process the table
+                        for (Row row : table.getRows()) {
+                            CellCollection cells = row.getCells();
+                            for (int cellItr = 0; cellItr < cells.getCount(); cellItr++) {
+//                                String cellText = cells.get(c).toString(SaveFormat.TEXT).trim();
+//                                System.out.println(MessageFormat.format("\t\tContents of Cell:{0} = \"{1}\"", c, cellText));
+                                for (int fieldItr = 0; fieldItr < cells.get(cellItr).getRange().getFields().getCount(); fieldItr++) {
+                                    Field field = cells.get(cellItr).getRange().getFields().get(fieldItr);
+//                                    System.out.println(">>> >>> field.Type >>> >>> " + field.getType() + " >>> "+field.getDisplayResult());
+
+                                    if (field.getType() == 88) //88 is code for Hyperlink
+                                    {
+                                        FieldHyperlink hyperlink = (FieldHyperlink) field;
+                                        String hyperlinkText = hyperlink.getResult();
+                                        if (this.isWriting(hyperlinkText)) {
+                                            System.out.println("Table found >> Reference Found >> Added to List >> " + hyperlinkText);
+                                            myMap.put(hyperlinkText, hyperlinkText);
+                                        }
+
+                                        // Some hyperlinks can be local (links to bookmarks inside the document), ignore such.
+                                        if (hyperlink.getSubAddress() != null)
+                                            continue;
+
+                                        References ref = new References(this.currentSectionName, hyperlink.getResult(), hyperlink.getAddress());
+                                        this.refList.add(new ObjectMapper().writeValueAsString(ref));
+                                        this.getAuthorityReferences(hyperlink);
+
+                                    }
+                                }
+                            }
+                        }
+
+                    }
                 }
-                */
 
+                this.referencesListAsJSON = new ObjectMapper().writeValueAsString(this.refList);
+                this.authReferencesListAsJSON = new ObjectMapper().writeValueAsString(this.authRefList);
+
+                System.out.println("AUTHORITY REFERENCE LIST >>> "+String.join(",", this.authReferences));
+                System.out.println("AUTHORITY REFERENCE LIST AS JSON >>> "+this.authReferencesListAsJSON);
+                System.out.println("*** *** *** <><><> *** *** ***");
+
+
+                System.out.println("*** *** *** <><><> *** *** ***");
+                System.out.println(">>> >>> >>> myMap.keySet() >>> >>> >>>");
+                System.out.println(myMap.keySet());
+                System.out.println(myMap.size());
+
+
+                String[] keyArray = myMap.keySet().toArray(new String[0]);
+                System.out.println(keyArray);
+
+                for (var mapItr = 0; mapItr < myMap.size(); mapItr++) {
+                    String currentKey = keyArray[mapItr];
+                    this.writings = this.writings + currentKey;
+                    if (myMap.size() - mapItr > 1)
+                        this.writings = this.writings + ",";
+                }
+
+                System.out.println(this.writings);
+                System.out.println("*** *** *** <><><> *** *** ***");
+
+                this.applyWebPublishedAspect(nodeRef);
+
+
+                System.out.println("Number of Paragraphs ---> " + paraCount);
+                System.out.println("Number of Tables ---> " + tableCount);
 
             } catch (java.lang.Exception e) {
                 throw new RuntimeException(e);
             }
         }
-
-        System.out.println(">>>> ***** >>>>> END OF testAsposeMethods() >>>> ***** >>>>> ");
-
     }
 
 
-    public void buildAsposeDocument(final NodeRef nodeRef){
+
+    public void buildAsposeDocument(final NodeRef nodeRef) {
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
 
@@ -243,23 +348,44 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                 Map<String, String> myMap = new HashMap<String, String>();
                 int referencesCount = 0;
 
-                ArrayList sectionNames = this.extractSectionNames(nodeRef);
+                this.extractSectionNames(nodeRef);
                 ArrayList sectionNameList = new ArrayList();
                 ArrayList hyperLinkList = new ArrayList();
                 ArrayList refList = new ArrayList();
                 ArrayList authRefList = new ArrayList();
 
 
-                System.out.println("Number of Sections ---> "+contentDoc.getSections().getCount());
+                System.out.println("Number of Sections ---> " + contentDoc.getSections().getCount());
                 System.out.println("Document opened. Total pages are " + contentDoc.getPageCount());
 
-                for (var i=0; i<contentDoc.getSections().getCount(); i++) {
+                for (var i = 0; i < contentDoc.getSections().getCount(); i++) {
                     Section section = contentDoc.getSections().get(i);
-//                    System.out.println("Section # "+(i+1)+" Text = "+section.getText());
-                    System.out.println("Section # "+(i+1)+ " Para Count = "+section.getBody().getParagraphs().getCount());
+
+                    NodeCollection nodes = section.getBody().getChildNodes();
+
+                    //                    for (Node node : nodes) {
+                    //                        if (node.getNodeType() == NodeType.PARAGRAPH) {
+                    //                            System.out.println("Paragraph found.");
+                    //                        } else if (node.getNodeType() == NodeType.TABLE) {
+                    //                            System.out.println("Table found.");
+                    //                        }
+                    //                    }
+
+                    for (Node node : (Iterable<Node>) contentDoc.getChildNodes(NodeType.ANY, true)) {
+                        if (node instanceof Paragraph) {
+                            System.out.println("Paragraph found");
+
+                        } else if (node instanceof Table) {
+                            System.out.println("Table found");
+                        }
+                    }
+
+
+                    //                    System.out.println("Section # "+(i+1)+" Text = "+section.getText());
+                    System.out.println("Section # " + (i + 1) + " Para Count = " + section.getBody().getParagraphs().getCount());
 
                     ///// ******* FETCH FROM TABLE - START ******** //////
-                    System.out.println("Section # "+(i+1)+ " Table Count = "+section.getBody().getTables().getCount());
+                    System.out.println("Section # " + (i + 1) + " Table Count = " + section.getBody().getTables().getCount());
                     TableCollection tables = section.getBody().getTables();
 
                     for (int a = 0; a < tables.getCount(); a++) {
@@ -275,7 +401,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                             for (int c = 0; c < cells.getCount(); c++) {
                                 String cellText = cells.get(c).toString(SaveFormat.TEXT).trim();
                                 System.out.println(MessageFormat.format("\t\tContents of Cell:{0} = \"{1}\"", c, cellText));
-                                for(int fieldItr = 0; fieldItr < cells.get(c).getRange().getFields().getCount(); fieldItr++) {
+                                for (int fieldItr = 0; fieldItr < cells.get(c).getRange().getFields().getCount(); fieldItr++) {
                                     Field field = cells.get(c).getRange().getFields().get(fieldItr);
                                     if (field.getType() == 88) //88 is code for Hyperlink
                                     {
@@ -296,61 +422,51 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                     ///// ******* FETCH FROM TABLE - END ******** //////
 
 
-                        for(var j=0; j<section.getBody().getParagraphs().getCount(); j++)
-                    {
+                    for (var j = 0; j < section.getBody().getParagraphs().getCount(); j++) {
                         Paragraph paragraph = section.getBody().getParagraphs().get(j);
-                        String paraText = ""+paragraph.getText().toString();
+                        String paraText = "" + paragraph.getText().toString();
 
-                        if(paraText.indexOf("HYPERLINK") == -1)
-                        {
-                            System.out.println(" >>> NOT A HYPERLINK >> "+paraText);
+                        if (paraText.indexOf("HYPERLINK") == -1) {
+                            System.out.println(" >>> NOT A HYPERLINK >> " + paraText);
 
                             String paraTextString = paraText.toString().toUpperCase().trim();
-                            Boolean isParaTextASectionName = false;
 
-                            if(fetchedDocTitle == false){
-                                if(paraTextString.indexOf(sectionNames.get(0).toString()) == 0){  //PREVIOUS
+                            if (fetchedDocTitle == false) {
+                                if (paraTextString.indexOf(sectionNames.get(0).toString()) == 0) { //PREVIOUS
                                     this.docTitle = previousParaText;
                                     fetchedDocTitle = true;
-                                }else{
+                                } else {
                                     previousParaText = paraText;
                                 }
                             }
 
-                            for(var k=0; k<sectionNames.size(); k++)
-                            {
+                            for (var k = 0; k < sectionNames.size(); k++) {
                                 var secName = sectionNames.get(k).toString().toUpperCase().trim();
-                                if(paraText.toUpperCase().trim().equals(secName))
-                                {
+                                if (paraText.toUpperCase().trim().equals(secName)) {
                                     currentSectionName = paraText;
-                                    System.out.println("$$$ SPOTTED SECTION NAME MATCH $$$ Setting Current Section Name As : "+currentSectionName);
+                                    System.out.println("$$$ SPOTTED SECTION NAME MATCH $$$ Setting Current Section Name As : " + currentSectionName);
                                     break;
                                 }
                             }
-                            if(paraText.indexOf('.') != -1)
-                            {
-                                if(paraText.toUpperCase().trim().split("\\.")[0].length() == 1)
-                                {
+                            if (paraText.indexOf('.') != -1) {
+                                if (paraText.toUpperCase().trim().split("\\.")[0].length() == 1) {
                                     currentSectionName = paraText;
                                 }
                             }
-                        }
-                        else
-                        {
-                            System.out.println(" >>> YES, FOUND A HYPERLINK @ SECTION >>> "+ currentSectionName);
-                            System.out.println(" >>> PARAGRAPH TEXT >>> "+ paraText);
+                        } else {
+                            System.out.println(" >>> YES, FOUND A HYPERLINK @ SECTION >>> " + currentSectionName);
+                            System.out.println(" >>> PARAGRAPH TEXT >>> " + paraText);
 
-                            for(int fieldItr = 0; fieldItr < paragraph.getRange().getFields().getCount(); fieldItr++){
+                            for (int fieldItr = 0; fieldItr < paragraph.getRange().getFields().getCount(); fieldItr++) {
                                 Field field = paragraph.getRange().getFields().get(fieldItr);
-                                if (field.getType() == 88) //88 is code for Hyperlink
+                                if (field.getType() == 88) //88 is code for Hyperlink in ASPOSE
                                 {
                                     FieldHyperlink hyperlink = (FieldHyperlink) field;
                                     String hyperlinkText = hyperlink.getResult();
 
-                                    if( (hyperlinkText.indexOf("POL-") > -1) ||
-                                        (hyperlinkText.indexOf("PRO-") > -1) ||
-                                        (hyperlinkText.indexOf("BPI-") > -1) )
-                                    {
+                                    if ((hyperlinkText.indexOf("POL-") > -1) ||
+                                            (hyperlinkText.indexOf("PRO-") > -1) ||
+                                            (hyperlinkText.indexOf("BPI-") > -1)) {
                                         myMap.put(hyperlinkText, hyperlinkText);
                                     }
 
@@ -362,9 +478,8 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                                     refList.add(new ObjectMapper().writeValueAsString(ref));
                                     referencesCount++;
 
-                                    if(currentSectionName.indexOf("Authority Reference") == 0)
-                                    {
-                                        System.out.println("*** *** *** Authority Reference *** *** *** "+hyperlink.getResult());
+                                    if (currentSectionName.indexOf("Authority Reference") == 0) {
+                                        System.out.println("*** *** *** Authority Reference *** *** *** " + hyperlink.getResult());
                                         References authorityRef = new References(currentSectionName, hyperlink.getResult(), hyperlink.getAddress());
                                         authRefList.add(new ObjectMapper().writeValueAsString(authorityRef));
                                         this.authReferences.add(hyperlink.getResult());
@@ -386,22 +501,20 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                 System.out.println(myMap.keySet());
                 System.out.println(myMap.size());
 
-                String writings = "";
                 String[] keyArray = myMap.keySet().toArray(new String[0]);
                 System.out.println(keyArray);
 
-                for(var mapItr=0; mapItr<myMap.size(); mapItr++){
+                for (var mapItr = 0; mapItr < myMap.size(); mapItr++) {
                     String currentKey = keyArray[mapItr];
-                    writings = writings + currentKey ;
-                    if(myMap.size() - mapItr > 1)
-                        writings = writings+",";
+                    this.writings = this.writings + currentKey;
+                    if (myMap.size() - mapItr > 1)
+                        this.writings = this.writings + ",";
                 }
 
-                System.out.println(writings);
+                System.out.println(this.writings);
                 System.out.println("*** *** *** <><><> *** *** ***");
 
-                this.applyWebPublishedAspect(nodeRef, writings);
-
+                this.applyWebPublishedAspect(nodeRef);
 
 
             } catch (java.lang.Exception e) {
@@ -410,8 +523,23 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         }
     }
 
-    public void getDocumentTitle(){
+    /*public void getDocumentTitle(NodeRef nodeRef) {
+        LoadOptions loadOptions = new LoadOptions();
+        loadOptions.setEncoding(StandardCharsets.UTF_8);
 
+        if (nodeService.exists(nodeRef)) {
+            try {
+                ContentReader contentReader = contentService.getReader(nodeRef, ContentModel.PROP_CONTENT);
+                InputStream is = contentReader.getContentInputStream();
+                Document contentDoc = new Document(is, loadOptions);
+
+                this.docTitle = contentDoc.getFirstSection().getBody().getFirstChild().getText();
+                System.out.println("*** Document Title >>> " + this.docTitle);
+
+            } catch (java.lang.Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     public ArrayList<String> getDefinedSectionNames() {
@@ -434,11 +562,26 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         return definedSectionNames;
     }
 
-    public void applyWebPublishedAspect(NodeRef nodeRef, String writings) {
+    public void createRendition(NodeRef nodeRef) {
+        // Names must be provided for the rendition definition and the rendering engine to use.
+        QName  renditionName       = QName.createQName(NamespaceService.CONTENT_MODEL_1_0_URI, "myRendDefn");
+        String renderingEngineName = ReformatRenderingEngine.NAME;
+
+        // Create the Rendition Definition object.
+        RenditionDefinition renditionDef = serviceRegistry.getRenditionService().createRenditionDefinition(renditionName, renderingEngineName);
+
+        // Set parameters on the rendition definition.
+        renditionDef.setParameterValue(AbstractRenderingEngine.PARAM_MIME_TYPE, MimetypeMap.MIMETYPE_PDF);
+
+    }
+
+    */
+
+    public void applyWebPublishedAspect(NodeRef nodeRef) {
         Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
 
         aspectProperties.put(ContentModel.PROP_TITLE, this.docTitle);
-        aspectProperties.put(BoeingContentModel.PROP_WRITING_SET, writings); //Comma Separated Reference Values
+        aspectProperties.put(BoeingContentModel.PROP_WRITING_SET, this.writings); //Comma Separated Reference Values
         aspectProperties.put(BoeingContentModel.PROP_REFERENCES_LIST, this.referencesListAsJSON); // JSON representation of ArrayList of Reference Objects
         aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES, String.join(",", this.authReferences)); //Comma Separated Authority Reference Values
         aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES_LIST, this.authReferencesListAsJSON); // JSON representation of ArrayList of AuthorityReference Objects
@@ -446,21 +589,72 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         nodeService.addAspect(nodeRef, BoeingContentModel.ASPECT_BOEING_ONEPPPM, aspectProperties);
     }
 
+    public Boolean isWriting(String paraText) {
+        return ((paraText.indexOf("POL-") > -1) || (paraText.indexOf("PRO-") > -1) || (paraText.indexOf("BPI-") > -1));
+    }
 
-//    public void createRendition(NodeRef nodeRef) {
-//        // Names must be provided for the rendition definition and the rendering engine to use.
-//        QName  renditionName       = QName.createQName(NamespaceService.CONTENT_MODEL_1_0_URI, "myRendDefn");
-//        String renderingEngineName = ReformatRenderingEngine.NAME;
-//
-//        // Create the Rendition Definition object.
-//        RenditionDefinition renditionDef = serviceRegistry.getRenditionService().createRenditionDefinition(renditionName, renderingEngineName);
-//
-//        // Set parameters on the rendition definition.
-//        renditionDef.setParameterValue(AbstractRenderingEngine.PARAM_MIME_TYPE, MimetypeMap.MIMETYPE_PDF);
-//
-//    }
+    public void determineCurrentSectionName(Paragraph para) {
+        if (this.isParagraghStyleMatchingWithSectionNameStyle(para)) {
+            for (var k = 0; k < sectionNames.size(); k++) {
+                var secName = sectionNames.get(k).toString().toUpperCase().trim();
+                String paraTextString = para.getText().toString().toUpperCase().trim();
 
+                if (paraTextString.equals(secName)) {
+                    this.currentSectionName = paraTextString;
+                    System.out.println("$$$ SPOTTED SECTION NAME MATCH $$$ Setting Current Section Name As : " + this.currentSectionName);
+                    break;
+                }
+            }
+        } else if ((this.isTitleExtracted == false) && this.isParagraghStyleMatchingWithTitleStyle(para)) {
+            this.docTitle = para.getText().toString();
+            System.out.println("$$$ SPOTTED TITLE NAME MATCH $$$ " + this.docTitle);
+        }
+    }
 
+    public Boolean isParagraghStyleMatchingWithSectionNameStyle(Paragraph para) {
+        Font paraFont = para.getParagraphFormat().getStyle().getFont();
+        String paraContentFontName = paraFont.getName();
+        Double paraContentFontSize = paraFont.getSize();
+        Boolean isParaContentBold = paraFont.getBold();
+
+        Boolean isMatching = false;
+        if (paraContentFontName.equals(BoeingContentStyleModel.SECTION_FONT_NAME) &&
+                paraContentFontSize.equals(BoeingContentStyleModel.SECTION_FONT_SIZE) &&
+                (isParaContentBold == BoeingContentStyleModel.isSectionFontBold())) {
+            isMatching = true;
+        }
+
+        return isMatching;
+    }
+
+    public Boolean isParagraghStyleMatchingWithTitleStyle(Paragraph para) {
+        Font paraFont = para.getParagraphFormat().getStyle().getFont();
+        String paraContentFontName = paraFont.getName();
+        Double paraContentFontSize = paraFont.getSize();
+        Boolean isParaContentBold = paraFont.getBold();
+
+        Boolean isMatching = false;
+        if (paraContentFontName.equals(BoeingContentStyleModel.TITLE_FONT_NAME) &&
+                paraContentFontSize.equals(BoeingContentStyleModel.TITLE_FONT_SIZE) &&
+                (isParaContentBold == BoeingContentStyleModel.isTitleFontBold())) {
+            isMatching = true;
+        }
+
+        return isMatching;
+    }
+
+    public void getAuthorityReferences(FieldHyperlink hyperlink){
+        try {
+            if (this.currentSectionName.indexOf(BoeingContentModel.AUTHORITY_REFERENCE) == 0) {
+                System.out.println("*** *** *** Authority Reference *** *** *** " + hyperlink.getResult());
+                References authorityRef = new References(this.currentSectionName, hyperlink.getResult(), hyperlink.getAddress());
+                this.authRefList.add(new ObjectMapper().writeValueAsString(authorityRef));
+                this.authReferences.add(hyperlink.getResult());
+            }
+        } catch (java.lang.Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 
 
     public void setNodeService(NodeService nodeService) {
