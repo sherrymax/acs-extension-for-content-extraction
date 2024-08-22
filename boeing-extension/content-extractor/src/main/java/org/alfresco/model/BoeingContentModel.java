@@ -8,9 +8,9 @@ public final class BoeingContentModel {
     public static String aspectName = "content-extractor";
     public static String writingSetProperty = "writingSet";
     public static String referencesListProperty = "referencesList";
-
     public static String authorityReferencesProperty = "authorityReferences";
     public static String authorityReferencesListProperty = "authorityReferencesList";
+    public static String AUTHORITY_REFERENCE = "AUTHORITY REFERENCE";
 
 
     public static String getNamespace(){
