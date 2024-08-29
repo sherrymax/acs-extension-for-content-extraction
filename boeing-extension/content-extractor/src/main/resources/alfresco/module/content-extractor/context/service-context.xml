@@ -24,6 +24,17 @@
         <property name="policyComponent" ref="policyComponent"/>
         <property name="nodeService" ref="NodeService"/>
         <property name="contentService" ref="ContentService"/>
+        <property name="globalPropertiesHandler" ref="globalPropertiesHandler"/>
+        <property name="boeingContentModel" ref="boeingContentModel"/>
     </bean>
+
+    <bean id="globalPropertiesHandler" class="org.alfresco.util.GlobalPropertiesHandler">
+		<property name="customerName" value="${customer.name}" />
+	</bean>
+
+    <bean id="boeingContentModel" class="org.alfresco.model.BoeingContentModel">
+		<property name="boeing_namespace" value="${boeing.namespace}" />
+	</bean>
+
 
 </beans>
