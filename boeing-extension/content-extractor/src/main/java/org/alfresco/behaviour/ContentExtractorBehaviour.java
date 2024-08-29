@@ -11,10 +11,20 @@ import org.alfresco.service.namespace.QName;
 import org.alfresco.behaviour.References;
 import org.alfresco.model.BoeingContentModel;
 import org.alfresco.model.BoeingContentStyleModel;
+import org.alfresco.util.GlobalPropertiesHandler;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+
+////import org.springframework.boot.CommandLineRunner;
+//import org.springframework.boot.SpringApplication;
+//import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.io.InputStream;
+import java.io.FileInputStream;
+import java.io.File;
 import java.util.*;
 import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
@@ -22,13 +32,15 @@ import java.text.MessageFormat;
 import com.aspose.words.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-
 //NodeServicePolicies.onUpdateProperties
 public class ContentExtractorBehaviour implements ContentServicePolicies.OnContentPropertyUpdatePolicy, NodeServicePolicies.OnUpdateNodePolicy, NodeServicePolicies.OnUpdatePropertiesPolicy {
 
     private PolicyComponent policyComponent;
     private NodeService nodeService;
     private ContentService contentService;
+    private GlobalPropertiesHandler globalPropertiesHandler;
+
+
 
     private String referencesListAsJSON = ""; //JSON representation of Reference Object List
     private String authReferencesListAsJSON = ""; //JSON representation of Reference Object List
@@ -37,18 +49,22 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
     private String docTitle = "";
     private String currentSectionName = "";
-
     private Boolean isTitleExtracted = false;
-
-    private String writings = "";
     private ArrayList sectionNames = new ArrayList();
     private ArrayList sectionNameList = new ArrayList();
-    private ArrayList hyperLinkList = new ArrayList();
     private ArrayList refList = new ArrayList();
     private ArrayList authRefList = new ArrayList();
 
 
+
+    @Value("${customer.name}")
+    private String customerName;
+
+
     public void init() {
+
+        this.setAsposeLicense();
+
         //On Content Upload/Update Or Property Update
         policyComponent.bindClassBehaviour(ContentServicePolicies.OnContentPropertyUpdatePolicy.QNAME, ContentModel.TYPE_CONTENT,
                 new JavaBehaviour(this, "onContentPropertyUpdate", Behaviour.NotificationFrequency.TRANSACTION_COMMIT));
@@ -70,39 +86,8 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
             String myFileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString();
             if ((myFileName.trim().indexOf(".docx") != -1)) {
-                //                this.testAsposeMethods(nodeRef);
-                //                this.buildAsposeDocument(nodeRef);
-                this.buildAsposeDocument_newLogic(nodeRef);
+                this.buildAsposeDocument(nodeRef);
             }
-
-
-            /*
-            COMMENTED TEMPORARILY TO TEST THE CONTENT EXTRACTION LOGIC OF TABLE - START
-
-            try {
-                System.out.println(">>>> ***** >>>>> START OF CONTENT UPLOAD OR UPDATE >>>> ***** >>>>> ");
-                System.out.println(">>>> ***** >>>>> Uploaded " + contentReader.getContentInputStream().readAllBytes().length + " bytes... >>>> ***** >>>>> ");
-
-                String fileName = nodeService.getProperty(nodeRef, ContentModel.PROP_NAME).toString();
-                String nodeId = nodeRef.getId();
-
-                if((fileName.trim().indexOf(".docx") != -1)) {
-                    System.out.println("FILE NAME : "+fileName+" >>> NODE ID : "+nodeId+" >>> INDEX-OF('doclib') : "+fileName.trim().indexOf("doclib"));
-                    System.out.println(">>> INVOKING buildAsposeDocument() FOR >>> "+fileName);
-
-                    this.buildAsposeDocument(nodeRef);
-                }
-
-
-                System.out.println(">>>> ***** >>>>> END OF CONTENT UPLOAD OR UPDATE >>>> ***** >>>>> ");
-
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
-            COMMENTED TEMPORARILY TO TEST THE CONTENT EXTRACTION LOGIC OF TABLE - END
-            */
-
         }
     }
 
@@ -187,7 +172,8 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
     }
 
 
-    public void buildAsposeDocument_newLogic(final NodeRef nodeRef) {
+    public void buildAsposeDocument(final NodeRef nodeRef) {
+        this.initialiseValues();
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
 
@@ -202,7 +188,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
                 String referencesListAsJSON = "";
                 String authReferencesListAsJSON = "";
-                Map<String, String> myMap = new HashMap<String, String>();
+                Map<String, String> referencesMap = new HashMap<String, String>();
                 int referencesCount = 0;
 
                 this.extractSectionNames(nodeRef);
@@ -230,7 +216,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                                 String hyperlinkText = hyperlink.getResult();
                                 if (this.isWriting(hyperlinkText)) {
                                     System.out.println("Paragraph found >> Reference Found >> Added to List >> " + hyperlinkText);
-                                    myMap.put(hyperlinkText, hyperlinkText);
+                                    referencesMap.put(hyperlinkText, hyperlinkText);
                                 }
 
                                 // Some hyperlinks can be local (links to bookmarks inside the document), ignore such.
@@ -269,7 +255,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                                         String hyperlinkText = hyperlink.getResult();
                                         if (this.isWriting(hyperlinkText)) {
                                             System.out.println("Table found >> Reference Found >> Added to List >> " + hyperlinkText);
-                                            myMap.put(hyperlinkText, hyperlinkText);
+                                            referencesMap.put(hyperlinkText, hyperlinkText);
                                         }
 
                                         // Some hyperlinks can be local (links to bookmarks inside the document), ignore such.
@@ -291,28 +277,35 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                 this.referencesListAsJSON = new ObjectMapper().writeValueAsString(this.refList);
                 this.authReferencesListAsJSON = new ObjectMapper().writeValueAsString(this.authRefList);
 
-                System.out.println("AUTHORITY REFERENCE LIST >>> "+String.join(",", this.authReferences));
-                System.out.println("AUTHORITY REFERENCE LIST AS JSON >>> "+this.authReferencesListAsJSON);
-                System.out.println("*** *** *** <><><> *** *** ***");
 
 
-                System.out.println("*** *** *** <><><> *** *** ***");
-                System.out.println(">>> >>> >>> myMap.keySet() >>> >>> >>>");
-                System.out.println(myMap.keySet());
-                System.out.println(myMap.size());
-
-
-                String[] keyArray = myMap.keySet().toArray(new String[0]);
-                System.out.println(keyArray);
-
-                for (var mapItr = 0; mapItr < myMap.size(); mapItr++) {
-                    String currentKey = keyArray[mapItr];
-                    this.writings = this.writings + currentKey;
-                    if (myMap.size() - mapItr > 1)
-                        this.writings = this.writings + ",";
+                String[] keyArray = referencesMap.keySet().toArray(new String[0]);
+                for (var mapItr = 0; mapItr < referencesMap.size(); mapItr++) {
+                    this.references.add(keyArray[mapItr]);
                 }
 
-                System.out.println(this.writings);
+//                    System.out.println(referencesMap.keySet());
+//                    System.out.println(referencesMap.size());
+//                    for (var mapItr = 0; mapItr < referencesMap.size(); mapItr++) {
+//                        String currentKey = keyArray[mapItr];
+//                        this.references.add(keyArray[mapItr]);
+//
+//                        this.writings = this.writings + currentKey;
+//                        if (referencesMap.size() - mapItr > 1)
+//                            this.writings = this.writings + ",";
+//                    }
+
+//                System.out.println("*** *** *** WRITINGS - STRING *** *** ***");
+//                System.out.println(this.writings);
+                System.out.println("*** *** *** REFERENCES : ARRAY LIST *** *** ***");
+                System.out.println(this.references);
+                System.out.println("*** *** *** REFERENCES : AS JSON *** *** ***");
+                System.out.println(this.referencesListAsJSON);
+                System.out.println("*** *** *** AUTHORITY REFERENCES : ARRAY LIST  *** *** ***");
+                System.out.println(this.authReferences);
+                System.out.println("*** *** *** AUTHORITY REFERENCES : AS JSON *** *** ***");
+                System.out.println(this.authReferencesListAsJSON);
+
                 System.out.println("*** *** *** <><><> *** *** ***");
 
                 this.applyWebPublishedAspect(nodeRef);
@@ -327,8 +320,140 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         }
     }
 
+    public void initialiseValues(){
+        this.referencesListAsJSON = ""; //JSON representation of Reference Object List
+        this.authReferencesListAsJSON = ""; //JSON representation of Reference Object List
+        this.references = new ArrayList<String>();
+        this.authReferences = new ArrayList<String>();
+        this.docTitle = "";
+        this.currentSectionName = "";
+        this.isTitleExtracted = false;
+        this.sectionNames = new ArrayList();
+        this.sectionNameList = new ArrayList();
+        this.refList = new ArrayList();
+        this.authRefList = new ArrayList();
+    }
+
+    public void applyWebPublishedAspect(NodeRef nodeRef) {
+        Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
+
+        aspectProperties.put(ContentModel.PROP_TITLE, this.docTitle);
+
+        aspectProperties.put(BoeingContentModel.PROP_TEST_REPEATER, this.references); //List of Strings (Repeating) for Reference Values
+        aspectProperties.put(BoeingContentModel.PROP_TEST_REPEATER_2, this.authReferences); //List of Strings (Repeating) for Authority Reference Values
+
+        aspectProperties.put(BoeingContentModel.PROP_REFERENCES, String.join(",", this.references)); //Comma Separated Reference Values
+        aspectProperties.put(BoeingContentModel.PROP_REFERENCES_LIST, this.referencesListAsJSON); // JSON representation of ArrayList of Reference Objects
+        aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES, String.join(",", this.authReferences)); //Comma Separated Authority Reference Values
+        aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES_LIST, this.authReferencesListAsJSON); // JSON representation of ArrayList of AuthorityReference Objects
+
+        nodeService.addAspect(nodeRef, BoeingContentModel.ASPECT_BOEING_ONEPPPM, aspectProperties);
+        nodeService.addAspect(nodeRef, BoeingContentModel.ASPECT_BOEING_ONEPPPM, aspectProperties);
+
+        System.out.println("CUSTOMER NAME >>> "+this.customerName );
+        System.out.println("CUSTOMER NAME >>> "+this.globalPropertiesHandler.getCustomerName() );
+
+    }
+
+    public Boolean isWriting(String paraText) {
+        return ((paraText.indexOf("POL-") > -1) || (paraText.indexOf("PRO-") > -1) || (paraText.indexOf("BPI-") > -1));
+    }
+
+    public void determineCurrentSectionName(Paragraph para) {
+        if (this.isParagraghStyleMatchingWithSectionNameStyle(para)) {
+            for (var k = 0; k < sectionNames.size(); k++) {
+                var secName = sectionNames.get(k).toString().toUpperCase().trim();
+                String paraTextString = para.getText().toString().toUpperCase().trim();
+
+                if (paraTextString.equals(secName)) {
+                    this.currentSectionName = paraTextString;
+                    System.out.println("$$$ SPOTTED SECTION NAME MATCH $$$ Setting Current Section Name As : " + this.currentSectionName);
+                    break;
+                }
+            }
+        } else if ((this.isTitleExtracted == false) && this.isParagraghStyleMatchingWithTitleStyle(para)) {
+            this.docTitle = para.getText().toString();
+            System.out.println("$$$ SPOTTED TITLE NAME MATCH $$$ " + this.docTitle);
+        }
+    }
+
+    public Boolean isParagraghStyleMatchingWithSectionNameStyle(Paragraph para) {
+        Font paraFont = para.getParagraphFormat().getStyle().getFont();
+        String paraContentFontName = paraFont.getName();
+        Double paraContentFontSize = paraFont.getSize();
+        Boolean isParaContentBold = paraFont.getBold();
+
+        Boolean isMatching = false;
+        if (paraContentFontName.equals(BoeingContentStyleModel.SECTION_FONT_NAME) &&
+                paraContentFontSize.equals(BoeingContentStyleModel.SECTION_FONT_SIZE) &&
+                (isParaContentBold == BoeingContentStyleModel.isSectionFontBold())) {
+            isMatching = true;
+        }
+
+        return isMatching;
+    }
+
+    public Boolean isParagraghStyleMatchingWithTitleStyle(Paragraph para) {
+        Font paraFont = para.getParagraphFormat().getStyle().getFont();
+        String paraContentFontName = paraFont.getName();
+        Double paraContentFontSize = paraFont.getSize();
+        Boolean isParaContentBold = paraFont.getBold();
+
+        Boolean isMatching = false;
+        if (paraContentFontName.equals(BoeingContentStyleModel.TITLE_FONT_NAME) &&
+                paraContentFontSize.equals(BoeingContentStyleModel.TITLE_FONT_SIZE) &&
+                (isParaContentBold == BoeingContentStyleModel.isTitleFontBold())) {
+            isMatching = true;
+        }
+
+        return isMatching;
+    }
+
+    public void getAuthorityReferences(FieldHyperlink hyperlink){
+        try {
+            if (this.currentSectionName.indexOf(BoeingContentModel.AUTHORITY_REFERENCE) == 0) {
+                System.out.println("*** *** *** Authority Reference *** *** *** " + hyperlink.getResult());
+                References authorityRef = new References(this.currentSectionName, hyperlink.getResult(), hyperlink.getAddress());
+                this.authRefList.add(new ObjectMapper().writeValueAsString(authorityRef));
+                this.authReferences.add(hyperlink.getResult());
+            }
+        } catch (java.lang.Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
 
 
+    public void setNodeService(NodeService nodeService) {
+        this.nodeService = nodeService;
+    }
+
+    public void setContentService(ContentService contentService) {
+        this.contentService = contentService;
+    }
+
+    public void setPolicyComponent(PolicyComponent policyComponent) {
+        this.policyComponent = policyComponent;
+    }
+
+    public void setGlobalPropertiesHandler(GlobalPropertiesHandler globalPropertiesHandler) {
+        this.globalPropertiesHandler = globalPropertiesHandler;
+    }
+
+    public void setAsposeLicense(){
+        try {
+            License license = new License();
+//            license.setLicense("Aspose.Words.lic");
+            license.setLicense(new FileInputStream(new File("Aspose.Words.lic")));
+
+            System.out.println("ASPOSE WORD >> License set successfully.");
+
+        } catch (Exception e) {
+            System.out.println("\nThere was an error setting the license: " + e.getMessage());
+        }
+    }
+
+
+    /*
     public void buildAsposeDocument(final NodeRef nodeRef) {
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
@@ -345,7 +470,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
                 String referencesListAsJSON = "";
                 String authReferencesListAsJSON = "";
-                Map<String, String> myMap = new HashMap<String, String>();
+                Map<String, String> referencesMap = new HashMap<String, String>();
                 int referencesCount = 0;
 
                 this.extractSectionNames(nodeRef);
@@ -467,7 +592,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                                     if ((hyperlinkText.indexOf("POL-") > -1) ||
                                             (hyperlinkText.indexOf("PRO-") > -1) ||
                                             (hyperlinkText.indexOf("BPI-") > -1)) {
-                                        myMap.put(hyperlinkText, hyperlinkText);
+                                        referencesMap.put(hyperlinkText, hyperlinkText);
                                     }
 
                                     // Some hyperlinks can be local (links to bookmarks inside the document), ignore these.
@@ -497,17 +622,17 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                 this.authReferencesListAsJSON = new ObjectMapper().writeValueAsString(authRefList);
 
                 System.out.println("*** *** *** <><><> *** *** ***");
-                System.out.println(">>> >>> >>> myMap.keySet() >>> >>> >>>");
-                System.out.println(myMap.keySet());
-                System.out.println(myMap.size());
+                System.out.println(">>> >>> >>> referencesMap.keySet() >>> >>> >>>");
+                System.out.println(referencesMap.keySet());
+                System.out.println(referencesMap.size());
 
-                String[] keyArray = myMap.keySet().toArray(new String[0]);
+                String[] keyArray = referencesMap.keySet().toArray(new String[0]);
                 System.out.println(keyArray);
 
-                for (var mapItr = 0; mapItr < myMap.size(); mapItr++) {
+                for (var mapItr = 0; mapItr < referencesMap.size(); mapItr++) {
                     String currentKey = keyArray[mapItr];
                     this.writings = this.writings + currentKey;
-                    if (myMap.size() - mapItr > 1)
+                    if (referencesMap.size() - mapItr > 1)
                         this.writings = this.writings + ",";
                 }
 
@@ -523,7 +648,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         }
     }
 
-    /*public void getDocumentTitle(NodeRef nodeRef) {
+    public void getDocumentTitle(NodeRef nodeRef) {
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
 
@@ -577,96 +702,6 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
     */
 
-    public void applyWebPublishedAspect(NodeRef nodeRef) {
-        Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
 
-        aspectProperties.put(ContentModel.PROP_TITLE, this.docTitle);
-        aspectProperties.put(BoeingContentModel.PROP_WRITING_SET, this.writings); //Comma Separated Reference Values
-        aspectProperties.put(BoeingContentModel.PROP_REFERENCES_LIST, this.referencesListAsJSON); // JSON representation of ArrayList of Reference Objects
-        aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES, String.join(",", this.authReferences)); //Comma Separated Authority Reference Values
-        aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES_LIST, this.authReferencesListAsJSON); // JSON representation of ArrayList of AuthorityReference Objects
-
-        nodeService.addAspect(nodeRef, BoeingContentModel.ASPECT_BOEING_ONEPPPM, aspectProperties);
-    }
-
-    public Boolean isWriting(String paraText) {
-        return ((paraText.indexOf("POL-") > -1) || (paraText.indexOf("PRO-") > -1) || (paraText.indexOf("BPI-") > -1));
-    }
-
-    public void determineCurrentSectionName(Paragraph para) {
-        if (this.isParagraghStyleMatchingWithSectionNameStyle(para)) {
-            for (var k = 0; k < sectionNames.size(); k++) {
-                var secName = sectionNames.get(k).toString().toUpperCase().trim();
-                String paraTextString = para.getText().toString().toUpperCase().trim();
-
-                if (paraTextString.equals(secName)) {
-                    this.currentSectionName = paraTextString;
-                    System.out.println("$$$ SPOTTED SECTION NAME MATCH $$$ Setting Current Section Name As : " + this.currentSectionName);
-                    break;
-                }
-            }
-        } else if ((this.isTitleExtracted == false) && this.isParagraghStyleMatchingWithTitleStyle(para)) {
-            this.docTitle = para.getText().toString();
-            System.out.println("$$$ SPOTTED TITLE NAME MATCH $$$ " + this.docTitle);
-        }
-    }
-
-    public Boolean isParagraghStyleMatchingWithSectionNameStyle(Paragraph para) {
-        Font paraFont = para.getParagraphFormat().getStyle().getFont();
-        String paraContentFontName = paraFont.getName();
-        Double paraContentFontSize = paraFont.getSize();
-        Boolean isParaContentBold = paraFont.getBold();
-
-        Boolean isMatching = false;
-        if (paraContentFontName.equals(BoeingContentStyleModel.SECTION_FONT_NAME) &&
-                paraContentFontSize.equals(BoeingContentStyleModel.SECTION_FONT_SIZE) &&
-                (isParaContentBold == BoeingContentStyleModel.isSectionFontBold())) {
-            isMatching = true;
-        }
-
-        return isMatching;
-    }
-
-    public Boolean isParagraghStyleMatchingWithTitleStyle(Paragraph para) {
-        Font paraFont = para.getParagraphFormat().getStyle().getFont();
-        String paraContentFontName = paraFont.getName();
-        Double paraContentFontSize = paraFont.getSize();
-        Boolean isParaContentBold = paraFont.getBold();
-
-        Boolean isMatching = false;
-        if (paraContentFontName.equals(BoeingContentStyleModel.TITLE_FONT_NAME) &&
-                paraContentFontSize.equals(BoeingContentStyleModel.TITLE_FONT_SIZE) &&
-                (isParaContentBold == BoeingContentStyleModel.isTitleFontBold())) {
-            isMatching = true;
-        }
-
-        return isMatching;
-    }
-
-    public void getAuthorityReferences(FieldHyperlink hyperlink){
-        try {
-            if (this.currentSectionName.indexOf(BoeingContentModel.AUTHORITY_REFERENCE) == 0) {
-                System.out.println("*** *** *** Authority Reference *** *** *** " + hyperlink.getResult());
-                References authorityRef = new References(this.currentSectionName, hyperlink.getResult(), hyperlink.getAddress());
-                this.authRefList.add(new ObjectMapper().writeValueAsString(authorityRef));
-                this.authReferences.add(hyperlink.getResult());
-            }
-        } catch (java.lang.Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-
-    public void setNodeService(NodeService nodeService) {
-        this.nodeService = nodeService;
-    }
-
-    public void setContentService(ContentService contentService) {
-        this.contentService = contentService;
-    }
-
-    public void setPolicyComponent(PolicyComponent policyComponent) {
-        this.policyComponent = policyComponent;
-    }
 
 }
