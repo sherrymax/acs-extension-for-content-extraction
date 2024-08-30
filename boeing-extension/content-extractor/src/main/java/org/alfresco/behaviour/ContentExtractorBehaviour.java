@@ -40,6 +40,9 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
     private ContentService contentService;
     private GlobalPropertiesHandler globalPropertiesHandler;
 
+    private BoeingContentModel boeingContentModel = new BoeingContentModel();
+    private BoeingContentStyleModel boeingContentStyleModel = new BoeingContentStyleModel();
+
 
 
     private String referencesListAsJSON = ""; //JSON representation of Reference Object List
@@ -56,9 +59,9 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
     private ArrayList authRefList = new ArrayList();
 
 
-
-    @Value("${customer.name}")
-    private String customerName;
+//    AN OPTION TO FETCH VALUES FROM alfresco-global.properties
+//    @Value("${customer.name}")
+//    private String customerName;
 
 
     public void init() {
@@ -335,23 +338,70 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
     }
 
     public void applyWebPublishedAspect(NodeRef nodeRef) {
+
+
+        /*
+        System.out.println("CUSTOMER NAME >>> "+this.customerName );
+        System.out.println("CUSTOMER NAME >>> "+this.globalPropertiesHandler.getCustomerName() );
+        System.out.println("BOEING NAMESPACE >>> " + this.globalPropertiesHandler.getBoeingNamespace());
+        System.out.println("BOEING ASPECT NAME >>> " + this.globalPropertiesHandler.getBoeingAspectName());
+        System.out.println("BOEING writingSetProperty >>> " + this.globalPropertiesHandler.getWritingSetProperty());
+        System.out.println("BOEING referencesListProperty >>> " + this.globalPropertiesHandler.getReferencesListProperty());
+        System.out.println("BOEING authorityReferencesProperty >>> " + this.globalPropertiesHandler.getAuthorityReferencesProperty());
+        System.out.println("BOEING authorityReferencesListProperty >>> " + this.globalPropertiesHandler.getAuthorityReferencesListProperty());
+        System.out.println("BOEING authorityReferencesSectionTitle >>> " + this.globalPropertiesHandler.getAuthorityReferencesSectionTitle());
+
+        System.out.println("BOEING sectionFontName >>> " + this.globalPropertiesHandler.getSectionFontName());
+        System.out.println("BOEING sectionFontSize >>> " + this.globalPropertiesHandler.getSectionFontSize());
+        System.out.println("BOEING sectionFontBold >>> " + this.globalPropertiesHandler.getSectionFontBold());
+
+        System.out.println("BOEING titleFontName >>> " + this.globalPropertiesHandler.getTitleFontName());
+        System.out.println("BOEING titleFontSize >>> " + this.globalPropertiesHandler.getTitleFontSize());
+        System.out.println("BOEING titleFontBold >>> " + this.globalPropertiesHandler.getTitleFontBold());
+
+        System.out.println("<<<< <<<<< >>>> >>> " );
+
+        System.out.println("BOEING NAMESPACE >>> " + this.boeingContentModel.getBoeingNamespace());
+        System.out.println("BOEING ASPECT NAME >>> " + this.boeingContentModel.getBoeingAspectName());
+        System.out.println("BOEING writingSetProperty >>> " + this.boeingContentModel.getWritingSetProperty());
+        System.out.println("BOEING referencesListProperty >>> " + this.boeingContentModel.getReferencesListProperty());
+        System.out.println("BOEING authorityReferencesProperty >>> " + this.boeingContentModel.getAuthorityReferencesProperty());
+        System.out.println("BOEING authorityReferencesListProperty >>> " + this.boeingContentModel.getAuthorityReferencesListProperty());
+        System.out.println("BOEING authorityReferencesSectionTitle >>> " + this.boeingContentModel.getAuthorityReferencesSectionTitle());
+
+        System.out.println("BOEING sectionFontName >>> " + this.boeingContentStyleModel.getSectionFontName());
+        System.out.println("BOEING sectionFontSize >>> " + this.boeingContentStyleModel.getSectionFontSize());
+        System.out.println("BOEING sectionFontBold >>> " + this.boeingContentStyleModel.isSectionFontBold());
+
+        System.out.println("BOEING titleFontName >>> " + this.boeingContentStyleModel.getTitleFontName());
+        System.out.println("BOEING titleFontSize >>> " + this.boeingContentStyleModel.getTitleFontSize());
+        System.out.println("BOEING titleFontBold >>> " + this.boeingContentStyleModel.isTitleFontBold());
+        */
+
         Map<QName, Serializable> aspectProperties = new HashMap<QName, Serializable>();
+        String nameSpace = this.boeingContentModel.getBoeingNamespace();
+
+        QName ASPECT_BOEING_ONEPPPM = QName.createQName(nameSpace, this.boeingContentModel.getBoeingAspectName());
+        QName PROP_REFERENCES = QName.createQName(nameSpace, this.boeingContentModel.getWritingSetProperty());
+        QName PROP_REFERENCES_LIST = QName.createQName(nameSpace, this.boeingContentModel.getReferencesListProperty());
+        QName PROP_AUTHORITY_REFERENCES = QName.createQName(nameSpace, this.boeingContentModel.getAuthorityReferencesProperty());
+        QName PROP_AUTHORITY_REFERENCES_LIST = QName.createQName(nameSpace, this.boeingContentModel.getAuthorityReferencesListProperty());
+
+        QName PROP_TEST_REPEATER = QName.createQName(nameSpace, "testRepeater"); //To be updated
+        QName PROP_TEST_REPEATER_2 = QName.createQName(nameSpace, "testRepeater2"); //To be updated
 
         aspectProperties.put(ContentModel.PROP_TITLE, this.docTitle);
 
-        aspectProperties.put(BoeingContentModel.PROP_TEST_REPEATER, this.references); //List of Strings (Repeating) for Reference Values
-        aspectProperties.put(BoeingContentModel.PROP_TEST_REPEATER_2, this.authReferences); //List of Strings (Repeating) for Authority Reference Values
+        aspectProperties.put(PROP_TEST_REPEATER, this.references); //List of Strings (Repeating) for Reference Values
+        aspectProperties.put(PROP_TEST_REPEATER_2, this.authReferences); //List of Strings (Repeating) for Authority Reference Values
 
-        aspectProperties.put(BoeingContentModel.PROP_REFERENCES, String.join(",", this.references)); //Comma Separated Reference Values
-        aspectProperties.put(BoeingContentModel.PROP_REFERENCES_LIST, this.referencesListAsJSON); // JSON representation of ArrayList of Reference Objects
-        aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES, String.join(",", this.authReferences)); //Comma Separated Authority Reference Values
-        aspectProperties.put(BoeingContentModel.PROP_AUTHORITY_REFERENCES_LIST, this.authReferencesListAsJSON); // JSON representation of ArrayList of AuthorityReference Objects
+        aspectProperties.put(PROP_REFERENCES, String.join(",", this.references)); //Comma Separated Reference Values
+        aspectProperties.put(PROP_REFERENCES_LIST, this.referencesListAsJSON); // JSON representation of ArrayList of Reference Objects
+        aspectProperties.put(PROP_AUTHORITY_REFERENCES, String.join(",", this.authReferences)); //Comma Separated Authority Reference Values
+        aspectProperties.put(PROP_AUTHORITY_REFERENCES_LIST, this.authReferencesListAsJSON); // JSON representation of ArrayList of AuthorityReference Objects
 
-        nodeService.addAspect(nodeRef, BoeingContentModel.ASPECT_BOEING_ONEPPPM, aspectProperties);
-        nodeService.addAspect(nodeRef, BoeingContentModel.ASPECT_BOEING_ONEPPPM, aspectProperties);
+        nodeService.addAspect(nodeRef, ASPECT_BOEING_ONEPPPM, aspectProperties);
 
-        System.out.println("CUSTOMER NAME >>> "+this.customerName );
-        System.out.println("CUSTOMER NAME >>> "+this.globalPropertiesHandler.getCustomerName() );
 
     }
 
@@ -411,7 +461,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
     public void getAuthorityReferences(FieldHyperlink hyperlink){
         try {
-            if (this.currentSectionName.indexOf(BoeingContentModel.AUTHORITY_REFERENCE) == 0) {
+            if (this.currentSectionName.indexOf(this.boeingContentModel.getAuthorityReferencesSectionTitle()) == 0) {
                 System.out.println("*** *** *** Authority Reference *** *** *** " + hyperlink.getResult());
                 References authorityRef = new References(this.currentSectionName, hyperlink.getResult(), hyperlink.getAddress());
                 this.authRefList.add(new ObjectMapper().writeValueAsString(authorityRef));
