@@ -25,16 +25,29 @@
         <property name="nodeService" ref="NodeService"/>
         <property name="contentService" ref="ContentService"/>
         <property name="globalPropertiesHandler" ref="globalPropertiesHandler"/>
-        <property name="boeingContentModel" ref="boeingContentModel"/>
+<!--        <property name="boeingContentModel" ref="boeingContentModel"/>-->
     </bean>
 
     <bean id="globalPropertiesHandler" class="org.alfresco.util.GlobalPropertiesHandler">
 		<property name="customerName" value="${customer.name}" />
+        <property name="boeingNamespace" value="${boeing.namespace}" />
+        <property name="boeingAspectName" value="${boeing.aspect.name}" />
+        <property name="writingSetProperty" value="${boeing.writingSet.property}" />
+        <property name="referencesListProperty" value="${boeing.referencesList.property}" />
+        <property name="authorityReferencesProperty" value="${boeing.authorityReferences.property}" />
+        <property name="authorityReferencesListProperty" value="${boeing.authorityReferencesList.property}" />
+        <property name="authorityReferencesSectionTitle" value="${boeing.authorityReferences.section.title}" />
+        <property name="sectionFontName" value="${boeing.writing.section.font.name}" />
+        <property name="sectionFontSize" value="${boeing.writing.section.font.size}" />
+        <property name="sectionFontBold" value="${boeing.writing.section.font.bold}" />
+        <property name="titleFontName" value="${boeing.writing.title.font.name}" />
+        <property name="titleFontSize" value="${boeing.writing.title.font.size}" />
+        <property name="titleFontBold" value="${boeing.writing.title.font.bold}" />
 	</bean>
 
-    <bean id="boeingContentModel" class="org.alfresco.model.BoeingContentModel">
-		<property name="boeing_namespace" value="${boeing.namespace}" />
-	</bean>
+<!--    <bean id="boeingContentModel" class="org.alfresco.model.BoeingContentModel">-->
+<!--		<property name="boeing_namespace" value="${boeing.namespace}" />-->
+<!--	</bean>-->
 
 
 </beans>
