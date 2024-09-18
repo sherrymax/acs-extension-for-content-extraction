@@ -44,7 +44,6 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
     private BoeingContentStyleModel boeingContentStyleModel = new BoeingContentStyleModel();
 
 
-
     private String referencesListAsJSON = ""; //JSON representation of Reference Object List
     private String authReferencesListAsJSON = ""; //JSON representation of Reference Object List
     private ArrayList<String> references = new ArrayList<String>();
@@ -281,7 +280,6 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
                 this.authReferencesListAsJSON = new ObjectMapper().writeValueAsString(this.authRefList);
 
 
-
                 String[] keyArray = referencesMap.keySet().toArray(new String[0]);
                 for (var mapItr = 0; mapItr < referencesMap.size(); mapItr++) {
                     this.references.add(keyArray[mapItr]);
@@ -323,7 +321,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         }
     }
 
-    public void initialiseValues(){
+    public void initialiseValues() {
         this.referencesListAsJSON = ""; //JSON representation of Reference Object List
         this.authReferencesListAsJSON = ""; //JSON representation of Reference Object List
         this.references = new ArrayList<String>();
@@ -390,7 +388,8 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         QName PROP_TEST_REPEATER = QName.createQName(nameSpace, "testRepeater"); //To be updated
         QName PROP_TEST_REPEATER_2 = QName.createQName(nameSpace, "testRepeater2"); //To be updated
 
-        aspectProperties.put(ContentModel.PROP_TITLE, this.docTitle);
+        //Commenting below line as discussed with MJ.
+//        aspectProperties.put(ContentModel.PROP_TITLE, this.docTitle);
 
         aspectProperties.put(PROP_TEST_REPEATER, this.references); //List of Strings (Repeating) for Reference Values
         aspectProperties.put(PROP_TEST_REPEATER_2, this.authReferences); //List of Strings (Repeating) for Authority Reference Values
@@ -459,7 +458,7 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         return isMatching;
     }
 
-    public void getAuthorityReferences(FieldHyperlink hyperlink){
+    public void getAuthorityReferences(FieldHyperlink hyperlink) {
         try {
             if (this.currentSectionName.indexOf(this.boeingContentModel.getAuthorityReferencesSectionTitle()) == 0) {
                 System.out.println("*** *** *** Authority Reference *** *** *** " + hyperlink.getResult());
@@ -489,7 +488,24 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         this.globalPropertiesHandler = globalPropertiesHandler;
     }
 
-    public void setAsposeLicense(){
+    public void setAsposeLicense() {
+        // For complete examples and data files, please go to https://github.com/aspose-words/Aspose.Words-for-Java.git.
+        License license = new License();
+        try {
+            license.setLicense(new FileInputStream("/usr/local/tomcat/Aspose.Total.lic"));
+            System.out.println("ASPOSE TOTAL >> License set successfully.");
+        } catch (Exception e) {
+            System.out.println("\nThere was an error setting the license: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
+
+
+
+    /*
+
+    public void setAsposeLicense() {
         try {
             License license = new License();
 //            license.setLicense("Aspose.Words.lic");
@@ -502,8 +518,6 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         }
     }
 
-
-    /*
     public void buildAsposeDocument(final NodeRef nodeRef) {
         LoadOptions loadOptions = new LoadOptions();
         loadOptions.setEncoding(StandardCharsets.UTF_8);
@@ -752,6 +766,3 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
 
     */
 
-
-
-}
