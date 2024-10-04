@@ -492,7 +492,9 @@ public class ContentExtractorBehaviour implements ContentServicePolicies.OnConte
         // For complete examples and data files, please go to https://github.com/aspose-words/Aspose.Words-for-Java.git.
         License license = new License();
         try {
-            license.setLicense(new FileInputStream("/usr/local/tomcat/Aspose.Total.lic"));
+            // license.setLicense(new FileInputStream("/usr/local/tomcat/Aspose.Total.lic"));
+            license.setLicense(getClass().getClassLoader().getResourceAsStream("Aspose.Total.lic"));
+
             System.out.println("ASPOSE TOTAL >> License set successfully.");
         } catch (Exception e) {
             System.out.println("\nThere was an error setting the license: " + e.getMessage());
